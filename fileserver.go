@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"github.com/klauspost/compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"mime"
 	neturl "net/url"
 	"os"
@@ -229,6 +233,31 @@ func downloadFileChan(filepath string, ranges []http.ByteRange, res *http.Respon
 	return
 }
 
+func downloadGZipChan(filepath string, res *http.Response) (err error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	n, err := io.Copy(gw, f)
+	if err != nil {
+		return
+	}
+	err = gw.Close()
+	if err != nil {
+		return
+	}
+	log.Printf("gzip orginal size is %v, compressed size is %v", n, buf.Len())
+	res.ContentLength = int64(buf.Len())
+	res.Body <- buf.Bytes()
+
+	return
+}
+
+
 func fileServerHandleRequestGen(optRoot string) func(http.Request, *http.Response) {
 	rootDir = getRootDir(optRoot)
 	return fileServerHandleRequest
@@ -274,8 +303,13 @@ func fileServerHandleRequest(req http.Request, res *http.Response) {
 
 	if fileIsModified {
 		res.ContentType = mime.TypeByExtension(fp.Ext(filepath))
-		res.ContentLength = getFilesize(filepath)
-		err = downloadFileChan(filepath, req.Ranges, res)
+		if req.Headers["Accept-Encoding"] == "gzip" {
+			res.ContentEncoding = "gzip"
+			err = downloadGZipChan(filepath, res)
+		} else {
+			res.ContentLength = getFilesize(filepath)
+			err = downloadFileChan(filepath, req.Ranges, res)
+		}
 	} else {
 		res.Status = 304
 	}
