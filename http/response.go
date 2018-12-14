@@ -25,6 +25,8 @@ type Response struct {
 	// ContentLength is the length of the response.
 	ContentLength int64
 
+	ContentEncoding string
+
 	conn   net.Conn
 	connID uint32
 }
@@ -132,6 +134,10 @@ func respondHead(req Request, res *Response) {
 
 	if res.ContentLength > 0 {
 		headers = append(headers, fmt.Sprintf("Content-Length: %d", r.Length()))
+	}
+
+	if len(res.ContentEncoding) > 0 {
+		headers = append(headers, fmt.Sprintf("Content-Encoding: %s", res.ContentEncoding))
 	}
 
 	if verbose {
